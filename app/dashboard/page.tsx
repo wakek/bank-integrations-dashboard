@@ -1,5 +1,6 @@
 import { ApiActivityLog } from "@/components/ui/dashboard/api-activity-log";
 import { IntegrationHealth } from "@/components/ui/dashboard/integration-health";
+import { WebhookAttempts } from "@/components/ui/dashboard/webhook-attempts";
 
 export default function Dashboard() {
     return (
@@ -27,6 +28,18 @@ export default function Dashboard() {
                         </p>
                     </header>
                     <ApiActivityLog />
+                </section>
+
+                <section>
+                    <header className="mb-6">
+                        <h2 className="text-xl font-semibold tracking-tight">
+                            Webhook deliveries
+                        </h2>
+                        <p className="mt-1 text-sm text-zinc-500">
+                            Events we tried to deliver to your endpoint. Click a row to see the full retry timeline.
+                        </p>
+                    </header>
+                    <WebhookAttempts />
                 </section>
             </main>
         </div>
