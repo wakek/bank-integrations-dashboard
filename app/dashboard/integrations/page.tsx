@@ -5,7 +5,7 @@ import Link from "next/link";
 import { IntegrationHealth } from "@/components/ui/dashboard/integration-health";
 import { ArrowLeft } from "@solar-icons/react";
 
-export default function IntegrationsPage() {
+const IntegrationsPage = () => {
     return (
         <div className="h-full flex flex-col flex-1 justify-start bg-zinc-50 font-sans dark:bg-black">
             <main className="mx-auto w-full max-w-7xl px-6 py-8">
@@ -29,3 +29,5 @@ export default function IntegrationsPage() {
         </div>
     );
 }
+
+export default IntegrationsPage;

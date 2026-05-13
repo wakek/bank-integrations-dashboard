@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { ApiActivityLog } from "@/components/ui/dashboard/api-activity-log";
 
-export default function ActivityPage() {
+const ActivityPage = () => {
     return (
         <div className="h-full flex flex-col flex-1 justify-start bg-zinc-50 font-sans dark:bg-black">
             <main className="mx-auto w-full max-w-7xl px-6 py-8">
@@ -27,4 +27,6 @@ export default function ActivityPage() {
             </main>
         </div>
     );
-}
+};
+
+export default ActivityPage;
