@@ -63,19 +63,21 @@ const STATUS_DISTRIBUTION: Array<readonly [WebhookStatus, number]> = [
 
 const STABLECOIN_RAIL_IDS = new Set(["rail_usdc_eth", "rail_usdc_sol", "rail_usdt_tron"]);
 
-function inferAssetAndNetwork(railId: string): { asset: "USDC" | "USDT"; network: "ETHEREUM" | "SOLANA" | "TRON" } {
+const inferAssetAndNetwork = (
+  railId: string,
+): { asset: "USDC" | "USDT"; network: "ETHEREUM" | "SOLANA" | "TRON" } => {
   if (railId === "rail_usdc_eth") return { asset: "USDC", network: "ETHEREUM" };
   if (railId === "rail_usdc_sol") return { asset: "USDC", network: "SOLANA" };
   return { asset: "USDT", network: "TRON" };
-}
+};
 
-function payloadPreview(
+const payloadPreview = (
   rand: () => number,
   event: WebhookEventType,
   resourceId: string,
   resourceUpdatedAt: string,
   rail: typeof integrations[number] | null,
-): string {
+): string => {
   const subCustomerId = `sc_${id(rand, "", 14).slice(1)}`;
   switch (event) {
     case "transaction.pay_in": {
@@ -229,12 +231,12 @@ function payloadPreview(
       );
     }
   }
-}
+};
 
-function pickResourceIdAndPrefix(
+const pickResourceIdAndPrefix = (
   rand: () => number,
   event: WebhookEventType,
-): { resourceId: string; prefix: string } {
+): { resourceId: string; prefix: string } => {
   switch (event) {
     case "transaction.pay_in":
     case "transaction.status_updated":
@@ -249,9 +251,9 @@ function pickResourceIdAndPrefix(
     case "virtual_account.status_updated":
       return { prefix: "va", resourceId: `va_${id(rand, "", 14).slice(1)}` };
   }
-}
+};
 
-function buildAttempts(
+const buildAttempts = (
   rand: () => number,
   status: WebhookStatus,
   firstAttemptAt: Date,
@@ -263,7 +265,7 @@ function buildAttempts(
   responseTime: number | null;
   errorCode: string | null;
   errorMessage: string | null;
-} {
+} => {
   // Backoff schedule (ms): immediate, 1m, 5m, 30m, 2h, 6h, 24h. Capped at 8 attempts.
   const backoff = [0, 1 * MINUTE, 5 * MINUTE, 30 * MINUTE, 2 * HOUR, 6 * HOUR, 24 * HOUR];
 
@@ -342,12 +344,12 @@ function buildAttempts(
     errorCode: last.errorCode,
     errorMessage: last.errorMessage,
   };
-}
+};
 
-function pickRailForEvent(
+const pickRailForEvent = (
   rand: () => number,
   event: WebhookEventType,
-): typeof integrations[number] | null {
+): typeof integrations[number] | null => {
   if (event === "transaction.pay_in" || event === "transaction.status_updated") {
     return pick(rand, moneyMovementRails);
   }
@@ -358,9 +360,9 @@ function pickRailForEvent(
     );
   }
   return null;
-}
+};
 
-function generate(): WebhookDelivery[] {
+const generate = (): WebhookDelivery[] => {
   const rand = mulberry32(WEBHOOK_SEED);
   const out: WebhookDelivery[] = [];
 
@@ -429,7 +431,7 @@ function generate(): WebhookDelivery[] {
 
   out.sort((a, b) => (a.firstAttemptAt < b.firstAttemptAt ? 1 : -1));
   return out;
-}
+};
 
 export const webhookDeliveries: WebhookDelivery[] = generate();
 

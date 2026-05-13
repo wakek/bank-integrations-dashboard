@@ -14,7 +14,7 @@ const navItems = [
   { label: "Label", href: "/label3" },
 ]
 
-export function AppNavMenu() {
+export const AppNavMenu = () => {
   const pathname = usePathname()
 
   return (

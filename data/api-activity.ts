@@ -129,11 +129,11 @@ const ERROR_TEMPLATES: Record<number, Array<{ code: string; message: string }>> 
   ],
 };
 
-function statusForEndpointAndRail(
+const statusForEndpointAndRail = (
   rand: () => number,
   endpoint: EndpointTemplate,
   railStatus: string | null,
-): number {
+): number => {
   // Rate endpoint occasionally hits 429.
   if (endpoint.path === "/v1/rates") {
     return weightedPick(rand, [[200, 96], [429, 3], [500, 1]]);
@@ -177,21 +177,21 @@ function statusForEndpointAndRail(
   return weightedPick(rand, [
     [200, 90], [404, 3], [401, 2], [400, 2], [429, 1], [500, 1], [502, 1],
   ]);
-}
+};
 
-function latencyForStatus(
+const latencyForStatus = (
   rand: () => number,
   status: number,
   base: [number, number],
-): number {
+): number => {
   if (status === 504) return randInt(rand, 20_000, 30_000);
   if (status === 502 || status === 503) return randInt(rand, 800, 8_000);
   if (status === 500) return randInt(rand, 600, 6_000);
   if (status >= 400 && status < 500) return randInt(rand, 30, 220);
   return randInt(rand, base[0], base[1]);
-}
+};
 
-function generate(): ApiActivityEntry[] {
+const generate = (): ApiActivityEntry[] => {
   const rand = mulberry32(ACTIVITY_SEED);
   const entries: ApiActivityEntry[] = [];
 
@@ -274,7 +274,7 @@ function generate(): ApiActivityEntry[] {
 
   entries.sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
   return entries;
-}
+};
 
 export const apiActivity: ApiActivityEntry[] = generate();
 

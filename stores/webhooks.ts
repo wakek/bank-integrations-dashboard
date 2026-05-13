@@ -20,9 +20,8 @@ const FAILURE_MESSAGES = [
   "Network error: could not reach api.wewire.com",
 ] as const;
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+const delay = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 export const useWebhooksStore = create<WebhooksState>((set) => ({
   deliveries: [],

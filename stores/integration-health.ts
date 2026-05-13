@@ -21,14 +21,15 @@ const FAILURE_MESSAGES = [
   "Network error: could not reach api.wewire.com",
 ] as const;
 
-function pickRandomSubset(items: readonly BankIntegration[]): BankIntegration[] {
+const pickRandomSubset = (
+  items: readonly BankIntegration[],
+): BankIntegration[] => {
   const count = Math.floor(Math.random() * (items.length + 1));
   return [...items].sort(() => Math.random() - 0.5).slice(0, count);
-}
+};
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+const delay = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 export const useIntegrationHealthStore = create<IntegrationHealthState>(
   (set) => ({

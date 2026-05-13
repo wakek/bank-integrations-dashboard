@@ -20,13 +20,40 @@ const STATUS_DOT: Record<IntegrationStatus, string> = {
   maintenance: "bg-sky-500",
 };
 
-function formatLatency(ms: number) {
+export const IntegrationHealth = () => {
+  const integrations = useIntegrationHealthStore((s) => s.integrations);
+  const loading = useIntegrationHealthStore((s) => s.loading);
+  const error = useIntegrationHealthStore((s) => s.error);
+  const fetch = useIntegrationHealthStore((s) => s.fetch);
+
+  useEffect(() => {
+    if (integrations.length === 0 && !loading && !error) {
+      void fetch();
+    }
+  }, [fetch]);
+
+  if (loading && integrations.length === 0) return <LoadingSkeleton />;
+  if (error) return <ErrorState error={error} onRetry={() => void fetch()} />;
+  if (integrations.length === 0) return <EmptyState />;
+
+  return (
+    <section aria-label="Integration health">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {integrations.map((i) => (
+          <IntegrationCard key={i.id} integration={i} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+const formatLatency = (ms: number) => {
   if (ms === 0) return "—";
   if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
   return `${ms}ms`;
-}
+};
 
-function StatusBadge({ status }: { status: IntegrationStatus }) {
+const StatusBadge = ({ status }: { status: IntegrationStatus }) => {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-50 px-2 py-1 text-xs font-medium dark:bg-zinc-900">
       <span
@@ -39,7 +66,7 @@ function StatusBadge({ status }: { status: IntegrationStatus }) {
   );
 }
 
-function IntegrationCard({ integration }: { integration: BankIntegration }) {
+const IntegrationCard = ({ integration }: { integration: BankIntegration }) => {
   const openIncident = integration.incidents.find((i) => i.resolvedAt === null);
   return (
     <article
@@ -90,7 +117,7 @@ function IntegrationCard({ integration }: { integration: BankIntegration }) {
   );
 }
 
-function LoadingSkeleton() {
+const LoadingSkeleton = () => {
   return (
     <div
       role="status"
@@ -129,7 +156,7 @@ function LoadingSkeleton() {
   );
 }
 
-function EmptyState() {
+const EmptyState = () => {
   return (
     <div className="rounded-xl border border-dashed bg-white p-8 text-center dark:border-zinc-800 dark:bg-zinc-950">
       <p className="font-medium">No integrations configured</p>
@@ -140,13 +167,13 @@ function EmptyState() {
   );
 }
 
-function ErrorState({
+const ErrorState = ({
   error,
   onRetry,
 }: {
   error: string;
   onRetry: () => void;
-}) {
+}) => {
   return (
     <div
       role="alert"
@@ -164,30 +191,5 @@ function ErrorState({
         Try again
       </button>
     </div>
-  );
-}
-
-export function IntegrationHealth() {
-  const integrations = useIntegrationHealthStore((s) => s.integrations);
-  const loading = useIntegrationHealthStore((s) => s.loading);
-  const error = useIntegrationHealthStore((s) => s.error);
-  const fetch = useIntegrationHealthStore((s) => s.fetch);
-
-  useEffect(() => {
-    void fetch();
-  }, [fetch]);
-
-  if (loading && integrations.length === 0) return <LoadingSkeleton />;
-  if (error) return <ErrorState error={error} onRetry={() => void fetch()} />;
-  if (integrations.length === 0) return <EmptyState />;
-
-  return (
-    <section aria-label="Integration health">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {integrations.map((i) => (
-          <IntegrationCard key={i.id} integration={i} />
-        ))}
-      </div>
-    </section>
   );
 }
