@@ -18,9 +18,9 @@ export function AppNavMenu() {
   const pathname = usePathname()
 
   return (
-    <div className="flex flex-col flex-0 bg-zinc-50 font-sans dark:bg-black">
-      <div className="flex flex-row items-center justify-start space-x-10 px-10 py-5 border-b">
-        <Command size={30} />
+    <div className="flex flex-row justify-center items-center flex-0 bg-zinc-50 font-sans dark:bg-black px-10 border-b">
+      <Command size={30} className="mr-5" />
+      <div className="max-w-7xl w-full flex flex-row items-center justify-start space-x-10 py-5">
         <nav className="flex items-center gap-1">
           {navItems.map((item) => {
             const active = pathname.startsWith(item.href);
