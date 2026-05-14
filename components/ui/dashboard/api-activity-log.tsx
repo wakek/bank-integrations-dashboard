@@ -99,7 +99,7 @@ export const ApiActivityLog = () => {
     if (entries.length === 0 && !loading && !error) {
       void fetch();
     }
-  }, [fetch]);
+  }, [fetch, entries.length, loading, error]);
 
   const toggleMethod = (m: ApiMethod) => {
     setMethods((prev) => {

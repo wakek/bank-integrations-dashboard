@@ -122,7 +122,7 @@ export const WebhookAttempts = () => {
     if (deliveries.length === 0 && !loading && !error) {
       void fetch();
     }
-  }, [fetch]);
+  }, [fetch, deliveries.length, loading, error]);
 
   const counts = useMemo(() => {
     const acc: Record<WebhookStatus, number> = {
@@ -486,7 +486,7 @@ const DeliveriesTable = ({
                 </span>
               </td>
               <td className="hidden px-3 py-2 text-xs text-zinc-600 md:table-cell dark:text-zinc-400">
-                <span className="block max-w-[22rem] truncate" title={d.destinationUrl}>
+                <span className="block max-w-88 truncate" title={d.destinationUrl}>
                   {d.destinationUrl}
                 </span>
               </td>

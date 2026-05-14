@@ -30,7 +30,7 @@ export const IntegrationHealth = () => {
     if (integrations.length === 0 && !loading && !error) {
       void fetch();
     }
-  }, [fetch]);
+  }, [fetch, integrations.length, loading, error]);
 
   if (loading && integrations.length === 0) return <LoadingSkeleton />;
   if (error) return <ErrorState error={error} onRetry={() => void fetch()} />;
