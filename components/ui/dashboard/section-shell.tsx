@@ -25,7 +25,7 @@ export const SectionShell = ({
     <section
       aria-label={ariaLabel}
       className={cn(
-        "rounded-xl border bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950",
+        "min-w-0 rounded-xl border bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950",
         className,
       )}
     >
