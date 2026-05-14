@@ -24,4 +24,4 @@ export {
   webhookStatusCounts,
   webhookEventTypes,
 } from "./webhooks";
-// Endpoint docs deferred — to be redone once we revisit the docs preview.
+export { initiatePayoutDoc, endpointDocsByPath } from "./endpoint-docs";
