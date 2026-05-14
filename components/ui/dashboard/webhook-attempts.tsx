@@ -11,9 +11,18 @@ import type {
 import { useWebhooksStore } from "@/stores/webhooks";
 import { cn } from "@/lib/utils";
 import { compareSorted } from "@/lib/sort";
-import { formatDateTime, formatRelativeTime, formatTime } from "@/lib/format";
+import {
+  formatBytes,
+  formatDateTime,
+  formatLatency,
+  formatRelativeTime,
+  formatTime,
+} from "@/lib/format";
 
+import { DetailRow } from "./detail-row";
+import { Pagination } from "./pagination";
 import { SortableHeader, type SortDir } from "./sortable-header";
+import { EmptyPanel, ErrorPanel } from "./state";
 
 type StatusFilter = "all" | WebhookStatus;
 type EnvFilter = "all" | "production" | "sandbox";
@@ -30,12 +39,12 @@ const webhookSortValue = (
   key: WebhookSortKey,
 ): string | number | null => {
   switch (key) {
-    case "time":        return d.firstAttemptAt;
-    case "event":       return d.eventType;
+    case "time": return d.firstAttemptAt;
+    case "event": return d.eventType;
     case "destination": return d.destinationUrl;
-    case "status":      return d.status;
-    case "attempts":    return d.attemptCount;
-    case "nextRetry":   return d.nextRetryAt;
+    case "status": return d.status;
+    case "attempts": return d.attemptCount;
+    case "nextRetry": return d.nextRetryAt;
   }
 };
 
@@ -48,17 +57,6 @@ const EVENT_TYPES: WebhookEventType[] = [
   "subcustomer.wallet.created",
   "subcustomer.wallet.failed",
 ];
-
-const formatLatency = (ms: number): string => {
-  if (ms >= 1_000) return `${(ms / 1_000).toFixed(2)}s`;
-  return `${ms}ms`;
-};
-
-const formatBytes = (n: number): string => {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
-};
 
 const STATUS_LABEL: Record<WebhookStatus, string> = {
   delivered: "Delivered",
@@ -79,6 +77,189 @@ const STATUS_DOT: Record<WebhookStatus, string> = {
   retrying: "bg-amber-500",
   failed: "bg-rose-500",
   pending: "bg-zinc-400",
+};
+
+
+export const WebhookAttempts = () => {
+  const deliveries = useWebhooksStore((s) => s.deliveries);
+  const loading = useWebhooksStore((s) => s.loading);
+  const error = useWebhooksStore((s) => s.error);
+  const fetch = useWebhooksStore((s) => s.fetch);
+
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [eventType, setEventType] = useState<WebhookEventType | "all">("all");
+  const [environment, setEnvironment] = useState<EnvFilter>("all");
+
+  const [sortKey, setSortKey] = useState<WebhookSortKey>("time");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
+
+  // Reset to first page whenever filters change (derive-from-key pattern
+  // so we don't synchronously setState inside an effect).
+  const filtersKey = `${search}|${statusFilter}|${eventType}|${environment}`;
+  const [prevFiltersKey, setPrevFiltersKey] = useState(filtersKey);
+  if (prevFiltersKey !== filtersKey) {
+    setPrevFiltersKey(filtersKey);
+    setPage(0);
+  }
+
+  const [selected, setSelected] = useState<WebhookDelivery | null>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  const onSort = (key: WebhookSortKey) => {
+    if (key === sortKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  useEffect(() => {
+    if (deliveries.length === 0 && !loading && !error) {
+      void fetch();
+    }
+  }, [fetch]);
+
+  const counts = useMemo(() => {
+    const acc: Record<WebhookStatus, number> = {
+      delivered: 0,
+      retrying: 0,
+      failed: 0,
+      pending: 0,
+    };
+    for (const d of deliveries) acc[d.status]++;
+    return acc;
+  }, [deliveries]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return deliveries.filter((d) => {
+      if (statusFilter !== "all" && d.status !== statusFilter) return false;
+      if (eventType !== "all" && d.eventType !== eventType) return false;
+      if (environment !== "all" && d.environment !== environment) return false;
+      if (q) {
+        const hay = [
+          d.eventType,
+          d.destinationUrl,
+          d.resourceId,
+          d.eventId,
+          d.integrationName ?? "",
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [deliveries, search, statusFilter, eventType, environment]);
+
+  const sorted = useMemo(
+    () => compareSorted(filtered, (d) => webhookSortValue(d, sortKey), sortDir),
+    [filtered, sortKey, sortDir],
+  );
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const safePage = Math.min(page, totalPages - 1);
+  const paginated = useMemo(
+    () => sorted.slice(safePage * pageSize, (safePage + 1) * pageSize),
+    [sorted, safePage, pageSize],
+  );
+
+  const openDetail = (d: WebhookDelivery) => {
+    setSelected(d);
+    dialogRef.current?.showModal();
+  };
+  const closeDetail = () => {
+    dialogRef.current?.close();
+    setSelected(null);
+  };
+  const toggleStatusFilter = (s: WebhookStatus) => {
+    setStatusFilter((cur) => (cur === s ? "all" : s));
+  };
+
+  if (loading && deliveries.length === 0) {
+    return (
+      <section aria-label="Webhook deliveries">
+        <LoadingTable />
+      </section>
+    );
+  }
+  if (error) {
+    return (
+      <section aria-label="Webhook deliveries">
+        <ErrorPanel
+          title="Could not load webhook deliveries"
+          error={error}
+          onRetry={() => void fetch()}
+        />
+      </section>
+    );
+  }
+
+  const isFiltered =
+    search.trim() !== "" ||
+    statusFilter !== "all" ||
+    eventType !== "all" ||
+    environment !== "all";
+
+  return (
+    <section aria-label="Webhook deliveries">
+      <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+        {(["delivered", "retrying", "failed", "pending"] as const).map((s) => (
+          <StatusTile
+            key={s}
+            status={s}
+            count={counts[s]}
+            active={statusFilter === s}
+            onClick={() => toggleStatusFilter(s)}
+          />
+        ))}
+      </div>
+
+      <FilterBar
+        search={search}
+        setSearch={setSearch}
+        eventType={eventType}
+        setEventType={setEventType}
+        environment={environment}
+        setEnvironment={setEnvironment}
+        filteredCount={filtered.length}
+        totalCount={deliveries.length}
+      />
+
+      {filtered.length === 0 ? (
+        <WebhooksEmpty filtered={isFiltered} />
+      ) : (
+        <DeliveriesTable
+          deliveries={paginated}
+          onSelect={openDetail}
+          sortKey={sortKey}
+          sortDir={sortDir}
+          onSort={onSort}
+          page={safePage}
+          pageSize={pageSize}
+          total={sorted.length}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+        />
+      )}
+
+      <dialog
+        ref={dialogRef}
+        onClose={() => setSelected(null)}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) closeDetail();
+        }}
+        className="m-0 ml-auto h-dvh w-full max-w-md border-l bg-white p-0 text-zinc-900 backdrop:bg-black/40 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100"
+      >
+        {selected ? <DetailPanel delivery={selected} onClose={closeDetail} /> : null}
+      </dialog>
+    </section>
+  );
 };
 
 const StatusPill = ({ status }: { status: WebhookStatus }) => (
@@ -255,100 +436,105 @@ const DeliveriesTable = ({
   sortKey,
   sortDir,
   onSort,
+  page,
+  pageSize,
+  total,
+  onPageChange,
+  onPageSizeChange,
 }: {
   deliveries: WebhookDelivery[];
   onSelect: (d: WebhookDelivery) => void;
   sortKey: WebhookSortKey;
   sortDir: SortDir;
   onSort: (key: WebhookSortKey) => void;
+  page: number;
+  pageSize: number;
+  total: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
 }) => (
-  <div className="overflow-x-auto rounded-xl border bg-white dark:border-zinc-800 dark:bg-zinc-950">
-    <table className="min-w-full text-sm">
-      <thead className="border-b bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
-        <tr>
-          <SortableHeader columnKey="time"        label="Time"        sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-          <SortableHeader columnKey="event"       label="Event"       sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-          <SortableHeader columnKey="destination" label="Destination" sortKey={sortKey} sortDir={sortDir} onSort={onSort} thClassName="hidden md:table-cell" />
-          <SortableHeader columnKey="status"      label="Status"      sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-          <SortableHeader columnKey="attempts"    label="Attempts"    sortKey={sortKey} sortDir={sortDir} onSort={onSort} thClassName="hidden lg:table-cell" />
-          <SortableHeader columnKey="nextRetry"   label="Next retry"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} thClassName="hidden lg:table-cell" />
-          <th scope="col" className="px-3 py-2 text-right">
-            <span className="sr-only">Inspect</span>
-          </th>
-        </tr>
-      </thead>
-      <tbody className="divide-y dark:divide-zinc-800">
-        {deliveries.map((d) => (
-          <tr key={d.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-900">
-            <td className="whitespace-nowrap px-3 py-2 text-zinc-500">
-              <time
-                dateTime={d.firstAttemptAt}
-                title={formatDateTime(d.firstAttemptAt)}
-              >
-                {formatRelativeTime(d.firstAttemptAt)}
-              </time>
-            </td>
-            <td className="px-3 py-2 font-mono text-xs">
-              <span className="block max-w-[16rem] truncate" title={d.eventType}>
-                {d.eventType}
-              </span>
-            </td>
-            <td className="hidden px-3 py-2 text-xs text-zinc-600 md:table-cell dark:text-zinc-400">
-              <span className="block max-w-[22rem] truncate" title={d.destinationUrl}>
-                {d.destinationUrl}
-              </span>
-            </td>
-            <td className="whitespace-nowrap px-3 py-2">
-              <StatusPill status={d.status} />
-            </td>
-            <td className="hidden whitespace-nowrap px-3 py-2 lg:table-cell">
-              <div className="flex items-center gap-2">
-                <RetryDots attempts={d.attempts} maxAttempts={d.maxAttempts} />
-                <span className="text-xs tabular-nums text-zinc-500">
-                  {d.attemptCount}/{d.maxAttempts}
-                </span>
-              </div>
-            </td>
-            <td className="hidden whitespace-nowrap px-3 py-2 text-xs text-zinc-500 lg:table-cell">
-              {d.nextRetryAt ? (
-                <time
-                  dateTime={d.nextRetryAt}
-                  title={formatDateTime(d.nextRetryAt)}
-                >
-                  {formatRelativeTime(d.nextRetryAt)}
-                </time>
-              ) : (
-                "—"
-              )}
-            </td>
-            <td className="whitespace-nowrap px-3 py-2 text-right">
-              <button
-                type="button"
-                onClick={() => onSelect(d)}
-                className="rounded-md px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 dark:text-zinc-300 dark:hover:bg-zinc-800"
-              >
-                Inspect<span className="sr-only"> delivery {d.id}</span>
-              </button>
-            </td>
+  <div className="rounded-xl border bg-white dark:border-zinc-800 dark:bg-zinc-950">
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-sm">
+        <thead className="border-b bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
+          <tr>
+            <SortableHeader columnKey="time" label="Time" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <SortableHeader columnKey="event" label="Event" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <SortableHeader columnKey="destination" label="Destination" sortKey={sortKey} sortDir={sortDir} onSort={onSort} thClassName="hidden md:table-cell" />
+            <SortableHeader columnKey="status" label="Status" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <SortableHeader columnKey="attempts" label="Attempts" sortKey={sortKey} sortDir={sortDir} onSort={onSort} thClassName="hidden lg:table-cell" />
+            <SortableHeader columnKey="nextRetry" label="Next retry" sortKey={sortKey} sortDir={sortDir} onSort={onSort} thClassName="hidden lg:table-cell" />
+            <th scope="col" className="px-3 py-2 text-right">
+              <span className="sr-only">Inspect</span>
+            </th>
           </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-);
-
-const DetailRow = ({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: React.ReactNode;
-  mono?: boolean;
-}) => (
-  <div className="grid grid-cols-3 gap-3 border-b py-2 last:border-b-0 dark:border-zinc-800">
-    <dt className="text-xs uppercase tracking-wide text-zinc-500">{label}</dt>
-    <dd className={cn("col-span-2 text-sm break-all", mono && "font-mono text-xs")}>{value}</dd>
+        </thead>
+        <tbody className="divide-y dark:divide-zinc-800">
+          {deliveries.map((d) => (
+            <tr key={d.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-900">
+              <td className="whitespace-nowrap px-3 py-2 text-zinc-500">
+                <time
+                  dateTime={d.firstAttemptAt}
+                  title={formatDateTime(d.firstAttemptAt)}
+                >
+                  {formatRelativeTime(d.firstAttemptAt)}
+                </time>
+              </td>
+              <td className="px-3 py-2 font-mono text-xs">
+                <span className="block max-w-[16rem] truncate" title={d.eventType}>
+                  {d.eventType}
+                </span>
+              </td>
+              <td className="hidden px-3 py-2 text-xs text-zinc-600 md:table-cell dark:text-zinc-400">
+                <span className="block max-w-[22rem] truncate" title={d.destinationUrl}>
+                  {d.destinationUrl}
+                </span>
+              </td>
+              <td className="whitespace-nowrap px-3 py-2">
+                <StatusPill status={d.status} />
+              </td>
+              <td className="hidden whitespace-nowrap px-3 py-2 lg:table-cell">
+                <div className="flex items-center gap-2">
+                  <RetryDots attempts={d.attempts} maxAttempts={d.maxAttempts} />
+                  <span className="text-xs tabular-nums text-zinc-500">
+                    {d.attemptCount}/{d.maxAttempts}
+                  </span>
+                </div>
+              </td>
+              <td className="hidden whitespace-nowrap px-3 py-2 text-xs text-zinc-500 lg:table-cell">
+                {d.nextRetryAt ? (
+                  <time
+                    dateTime={d.nextRetryAt}
+                    title={formatDateTime(d.nextRetryAt)}
+                  >
+                    {formatRelativeTime(d.nextRetryAt)}
+                  </time>
+                ) : (
+                  "—"
+                )}
+              </td>
+              <td className="whitespace-nowrap px-3 py-2 text-right">
+                <button
+                  type="button"
+                  onClick={() => onSelect(d)}
+                  className="rounded-md px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                >
+                  Inspect<span className="sr-only"> delivery {d.id}</span>
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <Pagination
+      page={page}
+      pageSize={pageSize}
+      total={total}
+      onPageChange={onPageChange}
+      onPageSizeChange={onPageSizeChange}
+      className="border-t dark:border-zinc-800"
+    />
   </div>
 );
 
@@ -420,7 +606,7 @@ const DetailPanel = ({
         type="button"
         onClick={onClose}
         aria-label="Close delivery detail"
-        className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 dark:hover:bg-zinc-800"
+        className="inline-flex size-10 shrink-0 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 dark:hover:bg-zinc-800"
       >
         <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="size-4">
           <path
@@ -457,7 +643,7 @@ const DetailPanel = ({
 
       <h3 className="mt-6 mb-2 text-xs uppercase tracking-wide text-zinc-500">Payload</h3>
       <pre className="overflow-x-auto rounded-md bg-zinc-50 p-3 font-mono text-xs dark:bg-zinc-900">
-{delivery.payloadPreview}
+        {delivery.payloadPreview}
       </pre>
     </div>
   </div>
@@ -483,189 +669,13 @@ const LoadingTable = () => (
   </div>
 );
 
-const EmptyState = ({ filtered }: { filtered: boolean }) => (
-  <div className="rounded-xl border border-dashed bg-white p-8 text-center dark:border-zinc-800 dark:bg-zinc-950">
-    <p className="font-medium">
-      {filtered ? "No deliveries match these filters" : "No webhook deliveries yet"}
-    </p>
-    <p className="mt-1 text-sm text-zinc-500">
-      {filtered
+const WebhooksEmpty = ({ filtered }: { filtered: boolean }) => (
+  <EmptyPanel
+    title={filtered ? "No deliveries match these filters" : "No webhook deliveries yet"}
+    description={
+      filtered
         ? "Try clearing the search or widening the status filter."
-        : "When events are emitted, delivery attempts will show up here."}
-    </p>
-  </div>
-);
-
-const ErrorState = ({
-  error,
-  onRetry,
-}: {
-  error: string;
-  onRetry: () => void;
-}) => (
-  <div
-    role="alert"
-    className="rounded-xl border border-rose-200 bg-rose-50 p-6 dark:border-rose-900 dark:bg-rose-950"
-  >
-    <p className="font-medium text-rose-900 dark:text-rose-100">
-      Could not load webhook deliveries
-    </p>
-    <p className="mt-1 text-sm text-rose-700 dark:text-rose-300">{error}</p>
-    <button
-      type="button"
-      onClick={onRetry}
-      className="mt-3 inline-flex items-center rounded-md bg-rose-100 px-3 py-1.5 text-sm font-medium text-rose-900 hover:bg-rose-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 dark:bg-rose-900 dark:text-rose-100 dark:hover:bg-rose-800"
-    >
-      Try again
-    </button>
-  </div>
-);
-
-export const WebhookAttempts = () => {
-  const deliveries = useWebhooksStore((s) => s.deliveries);
-  const loading = useWebhooksStore((s) => s.loading);
-  const error = useWebhooksStore((s) => s.error);
-  const fetch = useWebhooksStore((s) => s.fetch);
-
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [eventType, setEventType] = useState<WebhookEventType | "all">("all");
-  const [environment, setEnvironment] = useState<EnvFilter>("all");
-
-  const [sortKey, setSortKey] = useState<WebhookSortKey>("time");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
-
-  const [selected, setSelected] = useState<WebhookDelivery | null>(null);
-  const dialogRef = useRef<HTMLDialogElement>(null);
-
-  const onSort = (key: WebhookSortKey) => {
-    if (key === sortKey) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("asc");
+        : "When events are emitted, delivery attempts will show up here."
     }
-  };
-
-  useEffect(() => {
-    void fetch();
-  }, [fetch]);
-
-  const counts = useMemo(() => {
-    const acc: Record<WebhookStatus, number> = {
-      delivered: 0,
-      retrying: 0,
-      failed: 0,
-      pending: 0,
-    };
-    for (const d of deliveries) acc[d.status]++;
-    return acc;
-  }, [deliveries]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return deliveries.filter((d) => {
-      if (statusFilter !== "all" && d.status !== statusFilter) return false;
-      if (eventType !== "all" && d.eventType !== eventType) return false;
-      if (environment !== "all" && d.environment !== environment) return false;
-      if (q) {
-        const hay = [
-          d.eventType,
-          d.destinationUrl,
-          d.resourceId,
-          d.eventId,
-          d.integrationName ?? "",
-        ]
-          .join(" ")
-          .toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [deliveries, search, statusFilter, eventType, environment]);
-
-  const sorted = useMemo(
-    () => compareSorted(filtered, (d) => webhookSortValue(d, sortKey), sortDir),
-    [filtered, sortKey, sortDir],
-  );
-
-  const openDetail = (d: WebhookDelivery) => {
-    setSelected(d);
-    dialogRef.current?.showModal();
-  };
-  const closeDetail = () => {
-    dialogRef.current?.close();
-    setSelected(null);
-  };
-  const toggleStatusFilter = (s: WebhookStatus) => {
-    setStatusFilter((cur) => (cur === s ? "all" : s));
-  };
-
-  if (loading && deliveries.length === 0) {
-    return (
-      <section aria-label="Webhook deliveries">
-        <LoadingTable />
-      </section>
-    );
-  }
-  if (error) {
-    return (
-      <section aria-label="Webhook deliveries">
-        <ErrorState error={error} onRetry={() => void fetch()} />
-      </section>
-    );
-  }
-
-  const isFiltered =
-    search.trim() !== "" ||
-    statusFilter !== "all" ||
-    eventType !== "all" ||
-    environment !== "all";
-
-  return (
-    <section aria-label="Webhook deliveries">
-      <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-        {(["delivered", "retrying", "failed", "pending"] as const).map((s) => (
-          <StatusTile
-            key={s}
-            status={s}
-            count={counts[s]}
-            active={statusFilter === s}
-            onClick={() => toggleStatusFilter(s)}
-          />
-        ))}
-      </div>
-
-      <FilterBar
-        search={search}
-        setSearch={setSearch}
-        eventType={eventType}
-        setEventType={setEventType}
-        environment={environment}
-        setEnvironment={setEnvironment}
-        filteredCount={filtered.length}
-        totalCount={deliveries.length}
-      />
-
-      {filtered.length === 0 ? (
-        <EmptyState filtered={isFiltered} />
-      ) : (
-        <DeliveriesTable
-          deliveries={sorted}
-          onSelect={openDetail}
-          sortKey={sortKey}
-          sortDir={sortDir}
-          onSort={onSort}
-        />
-      )}
-
-      <dialog
-        ref={dialogRef}
-        onClose={() => setSelected(null)}
-        className="m-0 ml-auto h-screen w-full max-w-md border-l bg-white p-0 text-zinc-900 backdrop:bg-black/40 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100"
-      >
-        {selected ? <DetailPanel delivery={selected} onClose={closeDetail} /> : null}
-      </dialog>
-    </section>
-  );
-};
+  />
+);

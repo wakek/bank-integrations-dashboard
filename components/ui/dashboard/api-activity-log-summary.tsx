@@ -2,28 +2,14 @@
 
 import { useEffect, useMemo } from "react";
 
-import type { ApiMethod } from "@/data";
 import { useApiActivityStore } from "@/stores/api-activity";
 import { cn } from "@/lib/utils";
 import { formatDateTime, formatRelativeTime } from "@/lib/format";
 
+import { MethodBadge } from "./method-badge";
 import { SectionShell } from "./section-shell";
+import { StatusPill } from "./status-pill";
 import { ErrorState } from "./state";
-
-const METHOD_CLASS: Record<ApiMethod, string> = {
-  GET: "text-zinc-700 bg-zinc-100 dark:bg-zinc-800 dark:text-zinc-200",
-  POST: "text-emerald-700 bg-emerald-50 dark:bg-emerald-950 dark:text-emerald-300",
-  PUT: "text-violet-700 bg-violet-50 dark:bg-violet-950 dark:text-violet-300",
-  PATCH: "text-violet-700 bg-violet-50 dark:bg-violet-950 dark:text-violet-300",
-  DELETE: "text-rose-700 bg-rose-50 dark:bg-rose-950 dark:text-rose-300",
-};
-
-const statusClass = (code: number): string => {
-  if (code >= 500) return "text-rose-700 bg-rose-50 dark:bg-rose-950 dark:text-rose-300";
-  if (code >= 400) return "text-amber-700 bg-amber-50 dark:bg-amber-950 dark:text-amber-300";
-  if (code >= 300) return "text-sky-700 bg-sky-50 dark:bg-sky-950 dark:text-sky-300";
-  return "text-emerald-700 bg-emerald-50 dark:bg-emerald-950 dark:text-emerald-300";
-};
 
 const Shell = ({ children }: { children: React.ReactNode }) => (
   <SectionShell
@@ -120,28 +106,14 @@ export const ApiActivityLogSummary = () => {
             >
               {formatRelativeTime(e.timestamp)}
             </time>
-            <span
-              className={cn(
-                "inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold",
-                METHOD_CLASS[e.method],
-              )}
-            >
-              {e.method}
-            </span>
+            <MethodBadge method={e.method} />
             <span
               className="truncate font-mono text-xs text-zinc-700 dark:text-zinc-300"
               title={e.endpoint}
             >
               {e.endpoint}
             </span>
-            <span
-              className={cn(
-                "inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums",
-                statusClass(e.statusCode),
-              )}
-            >
-              {e.statusCode}
-            </span>
+            <StatusPill code={e.statusCode} />
           </li>
         ))}
       </ul>

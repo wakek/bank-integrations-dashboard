@@ -2,13 +2,25 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { ApiActivityEntry, ApiMethod } from "@/data";
+import type { ApiActivityEntry, ApiEndpointDoc, ApiMethod } from "@/data";
+import { endpointDocsByPath } from "@/data";
 import { useApiActivityStore } from "@/stores/api-activity";
 import { cn } from "@/lib/utils";
 import { compareSorted } from "@/lib/sort";
-import { formatDateTime, formatRelativeTime } from "@/lib/format";
+import {
+  formatBytes,
+  formatDateTime,
+  formatLatency,
+  formatRelativeTime,
+} from "@/lib/format";
 
+import { DetailRow } from "./detail-row";
+import { EndpointDocsDrawer } from "./endpoint-docs-drawer";
+import { MethodBadge } from "./method-badge";
+import { Pagination } from "./pagination";
 import { SortableHeader, type SortDir } from "./sortable-header";
+import { StatusPill } from "./status-pill";
+import { EmptyPanel, ErrorPanel } from "./state";
 
 type StatusBucket = "all" | "2xx" | "4xx" | "5xx";
 type EnvFilter = "all" | "production" | "sandbox";
@@ -29,71 +41,221 @@ const statusBucketOf = (code: number): "2xx" | "3xx" | "4xx" | "5xx" => {
   return "2xx";
 };
 
-const formatLatency = (ms: number): string => {
-  if (ms >= 1_000) return `${(ms / 1_000).toFixed(2)}s`;
-  return `${ms}ms`;
-};
-
-const formatBytes = (n: number): string => {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
-};
-
 const activitySortValue = (
   e: ApiActivityEntry,
   key: ActivitySortKey,
 ): string | number | null => {
   switch (key) {
-    case "time":     return e.timestamp;
-    case "method":   return e.method;
+    case "time": return e.timestamp;
+    case "method": return e.method;
     case "endpoint": return e.endpoint;
-    case "status":   return e.statusCode;
-    case "latency":  return e.latencyMs;
-    case "rail":     return e.integrationName;
+    case "status": return e.statusCode;
+    case "latency": return e.latencyMs;
+    case "rail": return e.integrationName;
   }
 };
 
-const METHOD_CLASS: Record<ApiMethod, string> = {
-  GET: "text-zinc-700 bg-zinc-100 dark:bg-zinc-800 dark:text-zinc-200",
-  POST: "text-emerald-700 bg-emerald-50 dark:bg-emerald-950 dark:text-emerald-300",
-  PUT: "text-violet-700 bg-violet-50 dark:bg-violet-950 dark:text-violet-300",
-  PATCH: "text-violet-700 bg-violet-50 dark:bg-violet-950 dark:text-violet-300",
-  DELETE: "text-rose-700 bg-rose-50 dark:bg-rose-950 dark:text-rose-300",
-};
+export const ApiActivityLog = () => {
+  const entries = useApiActivityStore((s) => s.entries);
+  const loading = useApiActivityStore((s) => s.loading);
+  const error = useApiActivityStore((s) => s.error);
+  const fetch = useApiActivityStore((s) => s.fetch);
 
-const MethodBadge = ({ method }: { method: ApiMethod }) => (
-  <span
-    className={cn(
-      "inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[11px] font-semibold tracking-tight",
-      METHOD_CLASS[method],
-    )}
-  >
-    {method}
-  </span>
-);
+  const [search, setSearch] = useState("");
+  const [statusBucket, setStatusBucket] = useState<StatusBucket>("all");
+  const [methods, setMethods] = useState<Set<ApiMethod>>(new Set());
+  const [environment, setEnvironment] = useState<EnvFilter>("all");
 
-const StatusPill = ({ code }: { code: number }) => {
-  const b = statusBucketOf(code);
-  const cls =
-    b === "2xx"
-      ? "text-emerald-700 bg-emerald-50 dark:bg-emerald-950 dark:text-emerald-300"
-      : b === "3xx"
-        ? "text-sky-700 bg-sky-50 dark:bg-sky-950 dark:text-sky-300"
-        : b === "4xx"
-          ? "text-amber-700 bg-amber-50 dark:bg-amber-950 dark:text-amber-300"
-          : "text-rose-700 bg-rose-50 dark:bg-rose-950 dark:text-rose-300";
+  const [sortKey, setSortKey] = useState<ActivitySortKey>("time");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
+
+  // Reset to first page whenever the filter narrows or widens the result set.
+  // Pattern: derive from filter key, compare-on-render, setState only if
+  // changed. Avoids the `setState-in-effect` cascade.
+  const filtersKey = `${search}|${statusBucket}|${[...methods].sort().join(",")}|${environment}`;
+  const [prevFiltersKey, setPrevFiltersKey] = useState(filtersKey);
+  if (prevFiltersKey !== filtersKey) {
+    setPrevFiltersKey(filtersKey);
+    setPage(0);
+  }
+
+  const [selected, setSelected] = useState<ApiActivityEntry | null>(null);
+  const [docDrawer, setDocDrawer] = useState<ApiEndpointDoc | null>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  const onSort = (key: ActivitySortKey) => {
+    if (key === sortKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  useEffect(() => {
+    if (entries.length === 0 && !loading && !error) {
+      void fetch();
+    }
+  }, [fetch]);
+
+  const toggleMethod = (m: ApiMethod) => {
+    setMethods((prev) => {
+      const next = new Set(prev);
+      if (next.has(m)) next.delete(m);
+      else next.add(m);
+      return next;
+    });
+  };
+
+  const openDetail = (e: ApiActivityEntry) => {
+    setSelected(e);
+    dialogRef.current?.showModal();
+  };
+  const closeDetail = () => {
+    dialogRef.current?.close();
+    setSelected(null);
+  };
+  const showDocs = (doc: ApiEndpointDoc) => setDocDrawer(doc);
+  const hideDocs = () => setDocDrawer(null);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return entries.filter((e) => {
+      if (statusBucket !== "all" && statusBucketOf(e.statusCode) !== statusBucket) return false;
+      if (methods.size > 0 && !methods.has(e.method)) return false;
+      if (environment !== "all" && e.environment !== environment) return false;
+      if (q) {
+        const hay = [
+          e.endpoint,
+          e.endpointResolved,
+          e.requestId,
+          e.subCustomerId,
+          e.idempotencyKey,
+          e.apiKeyPreview,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [entries, search, statusBucket, methods, environment]);
+
+  const sorted = useMemo(
+    () => compareSorted(filtered, (e) => activitySortValue(e, sortKey), sortDir),
+    [filtered, sortKey, sortDir],
+  );
+
+  // Clamp page if filters/sort shrunk the set below our current offset.
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const safePage = Math.min(page, totalPages - 1);
+  const paginated = useMemo(
+    () => sorted.slice(safePage * pageSize, (safePage + 1) * pageSize),
+    [sorted, safePage, pageSize],
+  );
+
+  if (loading && entries.length === 0) {
+    return (
+      <section aria-label="API activity">
+        <LoadingTable />
+      </section>
+    );
+  }
+  if (error) {
+    return (
+      <section aria-label="API activity">
+        <ErrorPanel
+          title="Could not load activity"
+          error={error}
+          onRetry={() => void fetch()}
+        />
+      </section>
+    );
+  }
+
+  const isFiltered =
+    search.trim() !== "" ||
+    statusBucket !== "all" ||
+    methods.size > 0 ||
+    environment !== "all";
+
   return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums",
-        cls,
+    <section aria-label="API activity">
+      <FilterBar
+        search={search}
+        setSearch={setSearch}
+        statusBucket={statusBucket}
+        setStatusBucket={setStatusBucket}
+        methods={methods}
+        toggleMethod={toggleMethod}
+        environment={environment}
+        setEnvironment={setEnvironment}
+        filteredCount={filtered.length}
+        totalCount={entries.length}
+      />
+      {filtered.length === 0 ? (
+        <ActivityEmpty filtered={isFiltered} />
+      ) : (
+        <ActivityTable
+          entries={paginated}
+          onSelect={openDetail}
+          onShowDocs={showDocs}
+          sortKey={sortKey}
+          sortDir={sortDir}
+          onSort={onSort}
+          page={safePage}
+          pageSize={pageSize}
+          total={sorted.length}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+        />
       )}
-    >
-      {code}
-    </span>
+
+      <dialog
+        ref={dialogRef}
+        onClose={() => setSelected(null)}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) closeDetail();
+        }}
+        className="m-0 ml-auto h-dvh w-full max-w-md border-l bg-white p-0 text-zinc-900 backdrop:bg-black/40 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100"
+      >
+        {selected ? (
+          <DetailPanel entry={selected} onClose={closeDetail} />
+        ) : null}
+      </dialog>
+
+      <EndpointDocsDrawer doc={docDrawer} onClose={hideDocs} />
+    </section>
   );
 };
+
+const InfoButton = ({
+  endpoint,
+  onClick,
+}: {
+  endpoint: string;
+  onClick: () => void;
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    aria-label={`View documentation for ${endpoint}`}
+    title={`View documentation for ${endpoint}`}
+    className="inline-flex shrink-0 rounded-md p-0.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+  >
+    <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="size-3.5">
+      <path
+        fillRule="evenodd"
+        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2h-1V9zm0-3a1 1 0 102 0 1 1 0 00-2 0z"
+        clipRule="evenodd"
+      />
+    </svg>
+  </button>
+);
 
 const FilterBar = ({
   search,
@@ -216,84 +378,99 @@ const FilterBar = ({
 const ActivityTable = ({
   entries,
   onSelect,
+  onShowDocs,
   sortKey,
   sortDir,
   onSort,
+  page,
+  pageSize,
+  total,
+  onPageChange,
+  onPageSizeChange,
 }: {
   entries: ApiActivityEntry[];
   onSelect: (e: ApiActivityEntry) => void;
+  onShowDocs: (doc: ApiEndpointDoc) => void;
   sortKey: ActivitySortKey;
   sortDir: SortDir;
   onSort: (key: ActivitySortKey) => void;
+  page: number;
+  pageSize: number;
+  total: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
 }) => (
-  <div className="overflow-x-auto rounded-xl border bg-white dark:border-zinc-800 dark:bg-zinc-950">
-    <table className="min-w-full text-sm">
-      <thead className="border-b bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
-        <tr>
-          <SortableHeader columnKey="time"     label="Time"     sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-          <SortableHeader columnKey="method"   label="Method"   sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-          <SortableHeader columnKey="endpoint" label="Endpoint" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-          <SortableHeader columnKey="status"   label="Status"   sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-          <SortableHeader columnKey="latency"  label="Latency"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} thClassName="hidden md:table-cell" />
-          <SortableHeader columnKey="rail"     label="Rail"     sortKey={sortKey} sortDir={sortDir} onSort={onSort} thClassName="hidden md:table-cell" />
-          <th scope="col" className="px-3 py-2 text-right">
-            <span className="sr-only">Inspect</span>
-          </th>
-        </tr>
-      </thead>
-      <tbody className="divide-y dark:divide-zinc-800">
-        {entries.map((e) => (
-          <tr key={e.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-900">
-            <td className="whitespace-nowrap px-3 py-2 text-zinc-500">
-              <time dateTime={e.timestamp} title={formatDateTime(e.timestamp)}>
-                {formatRelativeTime(e.timestamp)}
-              </time>
-            </td>
-            <td className="whitespace-nowrap px-3 py-2">
-              <MethodBadge method={e.method} />
-            </td>
-            <td className="px-3 py-2 font-mono text-xs">
-              <span className="block max-w-[28rem] truncate" title={e.endpoint}>
-                {e.endpoint}
-              </span>
-            </td>
-            <td className="whitespace-nowrap px-3 py-2">
-              <StatusPill code={e.statusCode} />
-            </td>
-            <td className="hidden whitespace-nowrap px-3 py-2 text-zinc-600 tabular-nums md:table-cell dark:text-zinc-400">
-              {formatLatency(e.latencyMs)}
-            </td>
-            <td className="hidden whitespace-nowrap px-3 py-2 text-zinc-600 md:table-cell dark:text-zinc-400">
-              {e.integrationName ?? "—"}
-            </td>
-            <td className="whitespace-nowrap px-3 py-2 text-right">
-              <button
-                type="button"
-                onClick={() => onSelect(e)}
-                className="rounded-md px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 dark:text-zinc-300 dark:hover:bg-zinc-800"
-              >
-                Inspect<span className="sr-only"> request {e.requestId}</span>
-              </button>
-            </td>
+  <div className="rounded-xl border bg-white dark:border-zinc-800 dark:bg-zinc-950">
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-sm">
+        <thead className="border-b bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
+          <tr>
+            <SortableHeader columnKey="time" label="Time" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <SortableHeader columnKey="method" label="Method" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <SortableHeader columnKey="endpoint" label="Endpoint" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <SortableHeader columnKey="status" label="Status" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <SortableHeader columnKey="latency" label="Latency" sortKey={sortKey} sortDir={sortDir} onSort={onSort} thClassName="hidden md:table-cell" />
+            <SortableHeader columnKey="rail" label="Rail" sortKey={sortKey} sortDir={sortDir} onSort={onSort} thClassName="hidden md:table-cell" />
+            <th scope="col" className="px-3 py-2 text-right">
+              <span className="sr-only">Inspect</span>
+            </th>
           </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-);
-
-const DetailRow = ({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: React.ReactNode;
-  mono?: boolean;
-}) => (
-  <div className="grid grid-cols-3 gap-3 border-b py-2 last:border-b-0 dark:border-zinc-800">
-    <dt className="text-xs uppercase tracking-wide text-zinc-500">{label}</dt>
-    <dd className={cn("col-span-2 text-sm break-all", mono && "font-mono text-xs")}>{value}</dd>
+        </thead>
+        <tbody className="divide-y dark:divide-zinc-800">
+          {entries.map((e) => (
+            <tr key={e.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-900">
+              <td className="whitespace-nowrap px-3 py-2 text-zinc-500">
+                <time dateTime={e.timestamp} title={formatDateTime(e.timestamp)}>
+                  {formatRelativeTime(e.timestamp)}
+                </time>
+              </td>
+              <td className="whitespace-nowrap px-3 py-2">
+                <MethodBadge method={e.method} />
+              </td>
+              <td className="px-3 py-2 font-mono text-xs">
+                <div className="flex items-center gap-1.5">
+                  <span className="block max-w-104 truncate" title={e.endpoint}>
+                    {e.endpoint}
+                  </span>
+                  {endpointDocsByPath[e.endpoint] ? (
+                    <InfoButton
+                      endpoint={e.endpoint}
+                      onClick={() => onShowDocs(endpointDocsByPath[e.endpoint])}
+                    />
+                  ) : null}
+                </div>
+              </td>
+              <td className="whitespace-nowrap px-3 py-2">
+                <StatusPill code={e.statusCode} />
+              </td>
+              <td className="hidden whitespace-nowrap px-3 py-2 text-zinc-600 tabular-nums md:table-cell dark:text-zinc-400">
+                {formatLatency(e.latencyMs)}
+              </td>
+              <td className="hidden whitespace-nowrap px-3 py-2 text-zinc-600 md:table-cell dark:text-zinc-400">
+                {e.integrationName ?? "—"}
+              </td>
+              <td className="whitespace-nowrap px-3 py-2 text-right">
+                <button
+                  type="button"
+                  onClick={() => onSelect(e)}
+                  className="rounded-md px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                >
+                  Inspect<span className="sr-only"> request {e.requestId}</span>
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <Pagination
+      page={page}
+      pageSize={pageSize}
+      total={total}
+      onPageChange={onPageChange}
+      onPageSizeChange={onPageSizeChange}
+      className="border-t dark:border-zinc-800"
+    />
   </div>
 );
 
@@ -314,7 +491,7 @@ const DetailPanel = ({
         type="button"
         onClick={onClose}
         aria-label="Close request detail"
-        className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 dark:hover:bg-zinc-800"
+        className="inline-flex size-10 shrink-0 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 dark:hover:bg-zinc-800"
       >
         <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="size-4">
           <path
@@ -408,177 +585,13 @@ const LoadingTable = () => (
   </div>
 );
 
-const EmptyState = ({ filtered }: { filtered: boolean }) => (
-  <div className="rounded-xl border border-dashed bg-white p-8 text-center dark:border-zinc-800 dark:bg-zinc-950">
-    <p className="font-medium">
-      {filtered ? "No requests match these filters" : "No activity yet"}
-    </p>
-    <p className="mt-1 text-sm text-zinc-500">
-      {filtered
+const ActivityEmpty = ({ filtered }: { filtered: boolean }) => (
+  <EmptyPanel
+    title={filtered ? "No requests match these filters" : "No activity yet"}
+    description={
+      filtered
         ? "Try clearing the search or widening the status filter."
-        : "When clients hit the API, requests will show up here."}
-    </p>
-  </div>
-);
-
-const ErrorState = ({
-  error,
-  onRetry,
-}: {
-  error: string;
-  onRetry: () => void;
-}) => (
-  <div
-    role="alert"
-    className="rounded-xl border border-rose-200 bg-rose-50 p-6 dark:border-rose-900 dark:bg-rose-950"
-  >
-    <p className="font-medium text-rose-900 dark:text-rose-100">
-      Could not load activity
-    </p>
-    <p className="mt-1 text-sm text-rose-700 dark:text-rose-300">{error}</p>
-    <button
-      type="button"
-      onClick={onRetry}
-      className="mt-3 inline-flex items-center rounded-md bg-rose-100 px-3 py-1.5 text-sm font-medium text-rose-900 hover:bg-rose-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 dark:bg-rose-900 dark:text-rose-100 dark:hover:bg-rose-800"
-    >
-      Try again
-    </button>
-  </div>
-);
-
-export const ApiActivityLog = () => {
-  const entries = useApiActivityStore((s) => s.entries);
-  const loading = useApiActivityStore((s) => s.loading);
-  const error = useApiActivityStore((s) => s.error);
-  const fetch = useApiActivityStore((s) => s.fetch);
-
-  const [search, setSearch] = useState("");
-  const [statusBucket, setStatusBucket] = useState<StatusBucket>("all");
-  const [methods, setMethods] = useState<Set<ApiMethod>>(new Set());
-  const [environment, setEnvironment] = useState<EnvFilter>("all");
-
-  const [sortKey, setSortKey] = useState<ActivitySortKey>("time");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
-
-  const [selected, setSelected] = useState<ApiActivityEntry | null>(null);
-  const dialogRef = useRef<HTMLDialogElement>(null);
-
-  const onSort = (key: ActivitySortKey) => {
-    if (key === sortKey) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("asc");
+        : "When clients hit the API, requests will show up here."
     }
-  };
-
-  useEffect(() => {
-    void fetch();
-  }, [fetch]);
-
-  const toggleMethod = (m: ApiMethod) => {
-    setMethods((prev) => {
-      const next = new Set(prev);
-      if (next.has(m)) next.delete(m);
-      else next.add(m);
-      return next;
-    });
-  };
-
-  const openDetail = (e: ApiActivityEntry) => {
-    setSelected(e);
-    dialogRef.current?.showModal();
-  };
-  const closeDetail = () => {
-    dialogRef.current?.close();
-    setSelected(null);
-  };
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return entries.filter((e) => {
-      if (statusBucket !== "all" && statusBucketOf(e.statusCode) !== statusBucket) return false;
-      if (methods.size > 0 && !methods.has(e.method)) return false;
-      if (environment !== "all" && e.environment !== environment) return false;
-      if (q) {
-        const hay = [
-          e.endpoint,
-          e.endpointResolved,
-          e.requestId,
-          e.subCustomerId,
-          e.idempotencyKey,
-          e.apiKeyPreview,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [entries, search, statusBucket, methods, environment]);
-
-  const sorted = useMemo(
-    () => compareSorted(filtered, (e) => activitySortValue(e, sortKey), sortDir),
-    [filtered, sortKey, sortDir],
-  );
-
-  if (loading && entries.length === 0) {
-    return (
-      <section aria-label="API activity">
-        <LoadingTable />
-      </section>
-    );
-  }
-  if (error) {
-    return (
-      <section aria-label="API activity">
-        <ErrorState error={error} onRetry={() => void fetch()} />
-      </section>
-    );
-  }
-
-  const isFiltered =
-    search.trim() !== "" ||
-    statusBucket !== "all" ||
-    methods.size > 0 ||
-    environment !== "all";
-
-  return (
-    <section aria-label="API activity">
-      <FilterBar
-        search={search}
-        setSearch={setSearch}
-        statusBucket={statusBucket}
-        setStatusBucket={setStatusBucket}
-        methods={methods}
-        toggleMethod={toggleMethod}
-        environment={environment}
-        setEnvironment={setEnvironment}
-        filteredCount={filtered.length}
-        totalCount={entries.length}
-      />
-      {filtered.length === 0 ? (
-        <EmptyState filtered={isFiltered} />
-      ) : (
-        <ActivityTable
-          entries={sorted}
-          onSelect={openDetail}
-          sortKey={sortKey}
-          sortDir={sortDir}
-          onSort={onSort}
-        />
-      )}
-
-      <dialog
-        ref={dialogRef}
-        onClose={() => setSelected(null)}
-        className="m-0 ml-auto h-screen w-full max-w-md border-l bg-white p-0 text-zinc-900 backdrop:bg-black/40 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100"
-      >
-        {selected ? (
-          <DetailPanel entry={selected} onClose={closeDetail} />
-        ) : null}
-      </dialog>
-    </section>
-  );
-};
+  />
+);

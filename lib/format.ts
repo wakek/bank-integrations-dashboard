@@ -1,3 +1,16 @@
+/** Compact latency string: "240ms", "2.30s". */
+export const formatLatency = (ms: number): string => {
+  if (ms >= 1_000) return `${(ms / 1_000).toFixed(2)}s`;
+  return `${ms}ms`;
+};
+
+/** Compact byte size: "240 B", "12.4 KB", "1.30 MB". */
+export const formatBytes = (n: number): string => {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+};
+
 /** 24h time-of-day, e.g. "17:28:18". */
 export const formatTime = (iso: string): string =>
   new Date(iso).toLocaleTimeString("en-US", {
