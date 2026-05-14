@@ -6,6 +6,7 @@ import type { ApiEndpointDoc } from "@/data";
 
 import { MethodBadge } from "./method-badge";
 import { StatusPill } from "./status-pill";
+import { CloseCircle } from "@solar-icons/react/ssr";
 
 const SectionHeading = ({ children }: { children: React.ReactNode }) => (
   <h3 className="mb-2 text-xs uppercase tracking-wide text-zinc-500">{children}</h3>
@@ -63,7 +64,7 @@ const DocsBody = ({
     <header className="flex items-start justify-between gap-3 border-b p-4 dark:border-zinc-800">
       <div className="min-w-0">
         <p className="text-xs uppercase tracking-wide text-zinc-500">Endpoint reference</p>
-        <div className="mt-1 flex items-center gap-2">
+        <div className="mt-1 flex flex-col items-start gap-2 sm:flex-row sm:items-center">
           <MethodBadge method={doc.method} />
           <code className="break-all font-mono text-sm">{doc.path}</code>
         </div>
@@ -74,15 +75,9 @@ const DocsBody = ({
         type="button"
         onClick={onClose}
         aria-label="Close endpoint docs"
-        className="inline-flex size-10 shrink-0 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 dark:hover:bg-zinc-800"
+        className="inline-flex shrink-0 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 dark:hover:bg-zinc-800"
       >
-        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="size-4">
-          <path
-            fillRule="evenodd"
-            d="M5.21 4.21a1 1 0 011.42 0L10 7.58l3.37-3.37a1 1 0 011.42 1.42L11.42 9l3.37 3.37a1 1 0 01-1.42 1.42L10 10.42l-3.37 3.37a1 1 0 01-1.42-1.42L8.58 9 5.21 5.63a1 1 0 010-1.42z"
-            clipRule="evenodd"
-          />
-        </svg>
+        <CloseCircle size={18} className="inline-block m-0" />
       </button>
     </header>
 
@@ -184,7 +179,7 @@ export const EndpointDocsDrawer = ({ doc, onClose }: EndpointDocsDrawerProps) =>
         if (e.target === e.currentTarget) onClose();
       }}
       aria-label="API endpoint documentation"
-      className="inset-4 m-auto max-h-[calc(100dvh-2rem)] max-w-lg rounded-xl border bg-white p-0 text-zinc-900 backdrop:bg-black/40 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100 sm:top-0 sm:right-0 sm:bottom-0 sm:left-auto sm:m-0 sm:h-dvh sm:max-h-none sm:w-full sm:rounded-none sm:border-l"
+      className="inset-4 m-auto max-w-[calc(100dvw-2rem)] max-h-[calc(100dvh-2rem)] sm:max-w-lg rounded-xl border bg-white p-0 text-zinc-900 backdrop:bg-black/40 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100 sm:top-0 sm:right-0 sm:bottom-0 sm:left-auto sm:m-0 sm:h-dvh sm:max-h-none sm:w-full sm:rounded-none sm:border-l"
     >
       {doc ? <DocsBody doc={doc} onClose={onClose} /> : null}
     </dialog>

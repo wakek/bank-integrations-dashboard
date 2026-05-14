@@ -1,9 +1,7 @@
-"use client";
-
 import Link from "next/link";
 
 import { IntegrationHealth } from "@/components/ui/dashboard/integration-health";
-import { ArrowLeft } from "@solar-icons/react";
+import { ArrowLeft } from "@solar-icons/react/ssr";
 
 const IntegrationsPage = () => {
     return (

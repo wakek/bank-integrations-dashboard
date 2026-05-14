@@ -454,8 +454,8 @@ const DeliveriesTable = ({
   onPageSizeChange: (size: number) => void;
 }) => (
   <div className="rounded-xl border bg-white dark:border-zinc-800 dark:bg-zinc-950">
-    <div className="overflow-x-auto">
-      <table className="min-w-full text-sm">
+    <div className="overflow-auto">
+      <table className="relative min-w-full text-sm ">
         <thead className="border-b bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
           <tr>
             <SortableHeader columnKey="time" label="Time" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />

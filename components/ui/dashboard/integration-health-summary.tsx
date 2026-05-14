@@ -113,7 +113,7 @@ export const IntegrationHealthSummary = () => {
 
       <div
         aria-label="Payment rails"
-        className="mt-3 flex flex-row snap-x gap-2 overflow-x-auto pb-1"
+        className="relative mt-3 flex flex-row snap-x gap-2 overflow-x-auto pb-1"
       >
         {sorted.map((i) => (
           <RailCard key={i.id} integration={i} />
