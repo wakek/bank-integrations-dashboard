@@ -5,7 +5,7 @@ import { ApiActivityLog } from "@/components/ui/dashboard/api-activity-log";
 const ActivityPage = () => {
     return (
         <div className="h-full flex flex-col flex-1 justify-start bg-zinc-50 font-sans dark:bg-black">
-            <main className="mx-auto w-full max-w-7xl px-6 py-8">
+            <main className="mx-auto w-full max-w-7xl min-w-0 px-6 py-8">
                 <header className="mb-6">
                     <Link
                         href="/dashboard"

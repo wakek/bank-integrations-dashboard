@@ -4,7 +4,7 @@ import { WebhookAttemptsSummary } from "@/components/ui/dashboard/webhook-attemp
 
 const Dashboard = () => {
     return (
-        <div className="h-full flex flex-col flex-1 justify-start bg-zinc-50 font-sans dark:bg-black">
+        <div className="h-full max-w-full overflow-x-hidden flex flex-col flex-1 justify-start bg-zinc-50 font-sans dark:bg-black">
             <main className="flex flex-1 flex-col mx-auto w-full max-w-7xl min-w-0 px-6 py-6">
                 <header className="mb-4">
                     <h1 className="text-xl font-semibold tracking-tight">Dashboard</h1>

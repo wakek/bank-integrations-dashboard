@@ -40,7 +40,7 @@ const ParameterRow = ({
 );
 
 const ErrorRow = ({ err }: { err: ApiEndpointDoc["errors"][number] }) => (
-  <li className="py-3">
+  <li className="p-3">
     <div className="flex items-center gap-2">
       <StatusPill code={err.httpStatus} />
       <code className="font-mono text-xs font-semibold">{err.code}</code>
@@ -147,9 +147,7 @@ const DocsBody = ({
         </SectionHeading>
         <ul className="divide-y rounded-md border dark:divide-zinc-800 dark:border-zinc-800">
           {doc.errors.map((err) => (
-            <li key={err.code} className="px-3">
-              <ErrorRow err={err} />
-            </li>
+            <ErrorRow key={err.code} err={err} />
           ))}
         </ul>
       </section>
@@ -186,7 +184,7 @@ export const EndpointDocsDrawer = ({ doc, onClose }: EndpointDocsDrawerProps) =>
         if (e.target === e.currentTarget) onClose();
       }}
       aria-label="API endpoint documentation"
-      className="m-0 ml-auto h-dvh w-full max-w-lg border-l bg-white p-0 text-zinc-900 backdrop:bg-black/40 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100"
+      className="inset-4 m-auto max-h-[calc(100dvh-2rem)] max-w-lg rounded-xl border bg-white p-0 text-zinc-900 backdrop:bg-black/40 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100 sm:top-0 sm:right-0 sm:bottom-0 sm:left-auto sm:m-0 sm:h-dvh sm:max-h-none sm:w-full sm:rounded-none sm:border-l"
     >
       {doc ? <DocsBody doc={doc} onClose={onClose} /> : null}
     </dialog>

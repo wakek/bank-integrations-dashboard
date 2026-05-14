@@ -221,7 +221,7 @@ export const ApiActivityLog = () => {
         onClick={(e) => {
           if (e.target === e.currentTarget) closeDetail();
         }}
-        className="m-0 ml-auto h-dvh w-full max-w-md border-l bg-white p-0 text-zinc-900 backdrop:bg-black/40 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100"
+        className="inset-4 m-auto max-h-[calc(100dvh-2rem)] max-w-md rounded-xl border bg-white p-0 text-zinc-900 backdrop:bg-black/40 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100 sm:top-0 sm:right-0 sm:bottom-0 sm:left-auto sm:m-0 sm:h-dvh sm:max-h-none sm:w-full sm:rounded-none sm:border-l"
       >
         {selected ? (
           <DetailPanel entry={selected} onClose={closeDetail} />
@@ -401,7 +401,7 @@ const ActivityTable = ({
   onPageSizeChange: (size: number) => void;
 }) => (
   <div className="rounded-xl border bg-white dark:border-zinc-800 dark:bg-zinc-950">
-    <div className="overflow-x-auto">
+    <div className="overflow-auto">
       <table className="min-w-full text-sm">
         <thead className="border-b bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
           <tr>

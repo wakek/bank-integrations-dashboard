@@ -9,9 +9,9 @@ import { Command } from "@solar-icons/react"
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard" },
-  { label: "Label", href: "/label1" },
-  { label: "Label", href: "/label2" },
-  { label: "Label", href: "/label3" },
+  // { label: "Label", href: "/label1" },
+  // { label: "Label", href: "/label2" },
+  // { label: "Label", href: "/label3" },
 ]
 
 export const AppNavMenu = () => {
